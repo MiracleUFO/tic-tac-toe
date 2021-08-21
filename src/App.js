@@ -1,79 +1,194 @@
 import './App.css';
-import { useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
+import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 
 
 
 function App() {
 
-  const socket = io('http://127.0.0.1:3000', { transports: ['websocket'], upgrade: false });
+  let BASEURL = 'http://192.168.43.120:3000';
 
-  socket.on('join', (data) => {
-    console.log(data);
-  });
-  
-  socket.on('submitMove', (data) => {
-    console.log(data);
-  });
+  const socket = io(`${BASEURL}`, { transports: ['websocket'], upgrade: false });
 
-  /*socket.emit('join', {playerId: 1}, function (resData, jwres){
-    console.log('i', resData)
-  });*/
+  const [PLAYER_ID] = useState(uuidv4());
+  const [MATCH_ID, setMatchId] = useState('')
+  const [YOUR_MARK, setYourMark] = useState('');
+  const [OTHERS_MARK, setOthersMark] = useState('');
+  const [otherPlayerJoined, setOtherJoined] = useState(false);
 
+  let matchIdRef = useRef(MATCH_ID);
+  let playerMarkRef = useRef(YOUR_MARK);
+
+  //  Classes for conditional CSS 
   const X_CLASS = 'x'
   const CIRCLE_CLASS = 'circle'
-  const WINNING_COMBINATIONS = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6]
-  ]
+ 
+  let cellElements = useRef(), board, winningMessageElement = useRef(), errorMessageElement = useRef(), winningMessageTextElement = useRef(), errorMessageTextElement = useRef();
+  let restartButton, circlePlayer;
   
+  const setMatchIdRef = (data) => {
 
-  let cellElements, board, winningMessageElement, restartButton, winningMessageTextElement, circleTurn;
-  
+    matchIdRef.current = data;
+    setMatchId(data);
+  };
+
+
+  const setPlayerMarkRef = (data) => {
+
+    playerMarkRef.current = data;
+    setYourMark(data);
+  };
+
 
   useEffect(() => { 
     
-    board = document.getElementById('board'); 
-    winningMessageElement = document.getElementById('winningMessage'); 
+    board = document.getElementById('board');  
     restartButton = document.getElementById('restartButton');
-    cellElements = document.querySelectorAll('[data-cell]');
-    winningMessageTextElement = document.querySelector('[data-winning-message-text]');
 
-    winningMessageElement.classList.add('show');
+    winningMessageElement.current.classList.add('show');
+    restartButton.addEventListener('click', startGame);
+  }, []);
 
-    startGame();
-    restartButton.addEventListener('click', restartGame);
-  }, []); 
-  
-  
-  let startGame = () => {
 
-    circleTurn = false;
+  useEffect(() => {
 
-    cellElements.forEach(cell => {
-      cell.classList.remove(X_CLASS)
-      cell.classList.remove(CIRCLE_CLASS)
-      cell.removeEventListener('click', handleClick)
-      cell.addEventListener('click', handleClick, { once: true })
+    socket.on('join', (data) => { 
+      if (Object.keys(data.players).length === 2 && MATCH_ID === data.matchId) {
+        setOtherJoined(true);
+      }   
     });
 
-    document.getElementById("audio").play();
+    socket.on('submitMove', (data) => { 
+      console.log(data);
 
-    setBoardHoverClass();
+      if (data.matchId === MATCH_ID) {
+
+        let unfurledBoard = [];
+  
+        data.board.forEach((entry) => {
+          unfurledBoard = [...unfurledBoard, ...entry]
+        })
+
+        setBoardInUI(unfurledBoard);
+
+        if (data.gameOver) {
+          endGame(data.winner)
+        }
+      }
+    });
+  }, [MATCH_ID])
+
+
+  let startGame = () => {
+
+    axios.post(`${BASEURL}/play`, { playerId: PLAYER_ID })
+    .then(response => {
+      
+      const responseResult = {...response.data.result};
+  
+      setMatchIdRef(responseResult.matchId);
+
+      if (Object.keys(responseResult.players).length === 2) {
+        setOtherJoined(true);
+      }
+  
+      circlePlayer = responseResult.player === 'O' ? true : false;
+
+      setPlayersInUI(responseResult.player);
+
+      resetBoard();
+  
+      let unfurledBoard = [];
+  
+      responseResult.board.forEach((entry) => {
+        unfurledBoard = [...unfurledBoard, ...entry]
+      })
+  
+     
+      setBoardInUI(unfurledBoard);
+  
+      setBoardHoverClass();
+  
+      playGameIntro();
+    });
+
+    winningMessageElement.current.classList.remove('show');
   }
 
 
-  let restartGame = () => {
+  let resetBoard = () => {
 
-    startGame();
-    winningMessageElement.classList.remove('show');
+    cellElements.current.childNodes.forEach(cell => {
+
+      cell.removeEventListener('click', handleClick);
+      cell.addEventListener('click', handleClick);
+      cell.classList.remove('x');
+      cell.classList.remove('circle');
+    }); 
+  }
+
+
+  let playGameIntro = () => {
+
+    let audio = document.getElementById("audio");
+    audio.volume = 0.1;
+    audio.play(); 
+  }
+
+
+  let setBoardInUI = (boardArray) => {
+
+    let unfurledBoardObject = {}, i = 0, cellElementsArray = Array.from(cellElements.current.childNodes), cellElementsObject = {}, j = 0;
+    
+    for (const key of boardArray) {    
+      unfurledBoardObject = {...unfurledBoardObject, [i]: key};
+      i++
+    }
+
+    for (const key of cellElementsArray) {
+      cellElementsObject = {...cellElements.current.childNodes, [j]: key};
+      j++
+    }
+    
+    for (const [ k, v ] of Object.entries(unfurledBoardObject)) {
+      for (const [ key, val ] of Object.entries(cellElementsObject)) {
+
+        let markClass = v === 'X' ? 'x' :  v === 'O' ? 'circle' : 'cell';
+
+        if (k === key) {
+          val.classList.add(markClass);
+          cellElements.current.replaceChild(val, cellElements.current.childNodes.item(k))
+        }
+      }
+    }
+  }
+
+
+  let setPlayersInUI = (player) => {
+
+    if (player === 'X') {
+      setPlayerMarkRef('X');
+      setOthersMark('O')
+    } else {
+      setPlayerMarkRef('O');
+      setOthersMark('X');
+    }
+  }
+
+
+  let setBoardHoverClass = () => {
+
+    board.classList.remove(X_CLASS);
+    board.classList.remove(CIRCLE_CLASS);
+
+    if (circlePlayer) {
+      board.classList.add(CIRCLE_CLASS);
+    } else {
+      board.classList.add(X_CLASS);
+    }
   }
 
   
@@ -81,82 +196,96 @@ function App() {
 
     const cell = e.target;
 
-    const currentClass = circleTurn ? CIRCLE_CLASS : X_CLASS;
+    let row, column;
 
-    placeMark(cell, currentClass);
+    cellElements.current.childNodes.forEach((value, index) => {
 
-    if (checkWin(currentClass)) {
-      endGame(false)
-    } else if (isDraw()) {
-      endGame(true)
-    } else {
-      swapTurns();
-      setBoardHoverClass();
+      if (value === e.target) {
+
+        if (index === 0 || index === 1 || index === 2) {
+          row = 0; column = index;
+        }
+
+        switch(index) {
+            case 3:
+              row = 1; column = 0;
+              break;
+            case 4:
+              row = 1; column = 1;
+              break;
+            case 5:
+              row = 1; column = 2;
+              break;
+            case 6:
+              row = 2; column = 0;
+              break;
+            case 7:
+              row = 2; column = 1;
+              break;
+            case 8:
+              row = 2; column = 2;
+              break;
+          default:
+        }
+      }
+      return;
+    });
+
+    let params = {
+      player: playerMarkRef.current,
+      matchId: matchIdRef.current,
+      row: row,
+      column: column
     }
+
+    axios.post(`${BASEURL}/submitMove`, params)
+      .then(response => {
+
+        if (!response.data.result) {
+          if (cell.classList.contains('x') || cell.classList.contains('circle')) {
+            errorMessageTextElement.current.innerText = `Space already filled`;
+          } else {
+            errorMessageTextElement.current.innerText = `Not your turn`;
+          }
+
+          errorMessageElement.current.classList.add('show');
+          
+          setTimeout(() => { 
+            errorMessageElement.current.classList.remove('show')
+          }, 2000)
+        } else {
+           placeMark(cell, playerMarkRef.current);
+        }
+      })  
   }
+
+
+  let placeMark = (cell, player) => {
+
+    let currentClass = player === 'X' ? 'x' : 'circle';
   
-
-  let endGame = (draw) => {
-
-    if (draw) {
-      winningMessageTextElement.innerText = 'Draw!'
-    } else {
-      winningMessageTextElement.innerText = `${circleTurn ? "O's" : "X's"} Wins!`
-    }
-
-    winningMessageElement.classList.add('show');
-  }
-  
-
-  let isDraw = () => {
-
-    return [...cellElements].every(cell => {
-      return cell.classList.contains(X_CLASS) || cell.classList.contains(CIRCLE_CLASS)
-    })
-  }
-
-  
-  let placeMark = (cell, currentClass) => {
-
     cell.classList.add(currentClass)
   }
   
-
-  let swapTurns = () => {
-
-    circleTurn = !circleTurn
-  }
- 
   
-  let setBoardHoverClass = () => {
+  let endGame = (winner) => {
 
-    board.classList.remove(X_CLASS);
-    board.classList.remove(CIRCLE_CLASS);
+    winningMessageTextElement.current.innerText = winner ? `${winner}'s Wins!` : 'Draw!';
 
-    if (circleTurn) {
-      board.classList.add(CIRCLE_CLASS);
-    } else {
-      board.classList.add(X_CLASS);
-    }
+    winningMessageElement.current.classList.add('show');
   }
   
-  
-  let checkWin = (currentClass) => {
-
-    return WINNING_COMBINATIONS.some(combination => {
-      return combination.every(index => {
-        return cellElements[index].classList.contains(currentClass)
-      })
-    })
-  }
-
 
   return (
     <div className="App">
       <header className="header">
-        Tic-Tac-Toe Game
+        <h1>Tic-Tac-Toe</h1>
+        <div id="playerBoard">
+          <p>{MATCH_ID ? `GAME ID: ${MATCH_ID}` : ''}</p>
+          <div><span><b>You ({YOUR_MARK})</b></span> vs <span><b>Player ({OTHERS_MARK}) {otherPlayerJoined ? '(joined)' : '(not joined)'}</b></span></div>
+        </div>
       </header>
-      <div className="board" id="board">
+      <div className="board" id="board" ref={cellElements}>
         <div className="cell" data-cell></div>
         <div className="cell" data-cell></div>
         <div className="cell" data-cell></div>
@@ -167,11 +296,16 @@ function App() {
         <div className="cell" data-cell></div>
         <div className="cell" data-cell></div>
       </div>
-      <div className="winning-message" id="winningMessage">
-        <div data-winning-message-text></div>
+
+      <div className="message" id="winningMessage" ref={winningMessageElement}>
+        <div data-winning-message-text ref={winningMessageTextElement}></div>
         <button id="restartButton">
           Start
         </button>
+      </div>
+
+      <div className="message" id="errorMessage" ref={errorMessageElement}>
+        <div data-error-message-text ref={errorMessageTextElement}></div>
       </div>
 
       <audio src="audio/intro.mp3" autoPlay={true} id="audio" controls hidden>

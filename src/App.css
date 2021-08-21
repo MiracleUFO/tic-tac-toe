@@ -63,9 +63,34 @@ body {
   background: linear-gradient(to top, rgb(96, 143, 187) 40%, rgb(43, 173, 190) 100%);
   color: white;
   font-family: Arial, Helvetica, sans-serif;
-  font-weight: bold;
-  height: 90px;
-  font-size: 1.95em;
+  height: 110px; 
+  padding-bottom: 10px;
+}
+
+.header h1 {
+  font-size: 2.1em;
+  margin: 5px 0;
+}
+
+#playerBoard {
+  position: absolute;
+  right: 10vw;
+}
+
+@media screen and (max-width: 800px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .header h1 {
+    font-size: 1.7em;
+  }
+
+  #playerBoard {
+    position: static;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .board {
@@ -170,7 +195,16 @@ body {
   background-color: white;
 }
 
-.winning-message {
+@media screen and (max-width: 800px) {
+  .board.circle .cell:not(.x):not(.circle):hover::before,
+  .board.circle .cell:not(.x):not(.circle):hover::after,
+  .board.x .cell:not(.x):not(.circle):hover::before,
+  .board.x .cell:not(.x):not(.circle):hover::after {
+    display: none;
+  }
+}
+
+.message {
   display: none;
   position: fixed;
   top: 0;
@@ -185,7 +219,7 @@ body {
   flex-direction: column;
 }
 
-.winning-message button {
+.message button {
   margin-top: 30px;
   font-size: 3rem;
   background-color: rgba(57, 143, 129, 0.596);
@@ -196,10 +230,10 @@ body {
   border-radius: 25%;
 }
 
-.winning-message button:hover {
+.message button:hover {
   background-color: rgba(38, 130, 190, 0.596); 
 }
 
-.winning-message.show {
+.message.show {
   display: flex;
 }
